@@ -1,0 +1,6 @@
+payload/
+tests/
+documents/
+__pycache__/
+input/
+output/
