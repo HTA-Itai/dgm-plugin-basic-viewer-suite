@@ -9,5 +9,6 @@ __pycache__/
 *.zip
 output/
 payload/
+basic-viewer-build-assets/
 node_modules/
 .DS_Store

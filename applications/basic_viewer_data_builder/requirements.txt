@@ -1,1 +1,1 @@
-# The initial Builder uses only the Python standard library.
+# The Builder uses only the Python standard library.
