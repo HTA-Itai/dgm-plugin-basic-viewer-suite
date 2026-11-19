@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Grouping Editor</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:13px "Segoe UI",sans-serif;color:#222;background:#f4f5f7}
+header{height:38px;display:flex;align-items:center;padding:0 10px;background:#e5e7eb;border-bottom:1px solid #cfd4dc}
+header strong{flex:1}button,select,input{font:inherit;border:1px solid #bbb;border-radius:4px;padding:4px 6px;background:#fff;color:#222}button{cursor:pointer}
+.flow{display:flex;gap:6px;padding:7px 10px;background:#f5f6f8;border-bottom:1px solid #d0d4dc;font-size:12px}.flow span{padding:3px 8px;border-radius:12px;border:1px solid #d0d4dc;background:#fff}.flow .apply{background:#2563eb;border-color:#2563eb;color:#fff}
+.body{height:calc(100vh - 66px);display:flex}.canvas{flex:1;padding:6px}svg{width:100%;height:100%;background:#fafafa;border:1px solid #d0d4dc}
+.right{width:300px;border-left:1px solid #d0d4dc;padding:8px 10px;display:flex;flex-direction:column}
+.tabs{display:flex}.tabs button{flex:1;border:0;border-bottom:2px solid #d0d4dc;border-radius:0;background:#f3f4f6}.tabs button.on{border-bottom:3px solid #2563eb;background:#fff;font-weight:bold}
+.panel{display:none}.panel.on{display:block}.step{border:1px solid #d0d4dc;border-radius:5px;padding:7px;margin-bottom:7px}.step.cur{border-color:#2563eb;box-shadow:0 0 0 2px #dbeafe}
+.seg{display:flex}.seg button{flex:1;border-radius:0;margin-left:-1px}.seg button:first-child{border-radius:4px 0 0 4px;margin-left:0}.seg button:last-child{border-radius:0 4px 4px 0}.seg button.on{background:#2563eb;border-color:#2563eb;color:#fff}
+.field label{display:block;color:#666;font-size:11px}.field input{width:100%}.preview{display:flex;flex-wrap:wrap;gap:3px;min-height:26px}.chip{padding:2px 6px;border:1px dashed #888;border-radius:10px;font-size:11px}
+.applybar{display:flex;gap:6px;margin-top:auto}.applybar button{padding:6px 8px}.applybar .apply{flex:1;background:#2563eb;border-color:#2563eb;color:#fff;font-weight:bold}
+.status{height:28px;border-top:1px solid #d0d4dc;padding:5px 10px;font-size:12px;color:#555}
+details{margin-top:6px}textarea{width:100%;height:180px;font:11px monospace;resize:vertical}
+</style>
+</head>
+<body>
+<header>
+  <strong>Grouping Editor</strong>
+  <button id="openRule">Open grouping rule...</button>
+  <button id="saveRule">Save grouping rule...</button>
+</header>
+<div class="flow"><span>1. Region</span>→<span>2. Split or select</span>→<span class="apply">Apply</span></div>
+<div class="body">
+  <div class="canvas"><svg id="canvas" viewBox="0 0 620 560"></svg></div>
+  <div class="right">
+    <div class="tabs"><button id="splitTab" class="on">1. Split by region</button><button id="manualTab">2. Manual selection</button></div>
+    <div id="splitPanel" class="panel on">
+      <div class="step cur"><b>1. Select region</b><div class="seg" style="margin-top:5px"><button id="drawRegion" class="on">Draw rectangle</button><button id="wholeRegion">Whole canvas</button></div><div id="regionInfo" style="font-size:11px;color:#666;margin-top:4px">Drag to select a region</div></div>
+      <div class="step"><b>2. Split method</b><div class="seg" style="margin-top:5px"><button data-split="x" class="on">By column</button><button data-split="y">By row</button><button data-split="size">By size</button></div></div>
+      <div class="step"><b>3. Group names</b><div class="field" style="margin-top:5px"><label>Prefix</label><input id="prefix" value="C"></div><div class="field" style="margin-top:5px"><label>Starting number</label><input id="start" type="number" value="1"></div><b style="display:block;margin-top:7px;font-size:11px">Preview</b><div class="preview" id="preview"></div></div>
+    </div>
+    <div id="manualPanel" class="panel">
+      <div class="step cur"><b>1. Select patterns</b><div class="seg" style="margin-top:5px"><button data-tool="click" class="on">Click</button><button data-tool="line">Line</button><button data-tool="rect">Rectangle</button></div></div>
+      <div class="step"><b>2. Group name</b><div class="field" style="margin-top:5px"><label>Name</label><input id="groupName" value="G1"></div></div>
+    </div>
+    <details open><summary>Grouping rule JSON</summary><textarea id="ruleJson"></textarea></details>
+    <div class="applybar"><button id="cancel">Cancel</button><button id="apply" class="apply" disabled>Apply</button></div>
+  </div>
+</div>
+<div class="status" id="status">Load a dataset and select patterns</div>
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+let backend = null, bridgeReady = false, patterns = [], mode = "split", split = "x", tool = "click";
+let scope = null, selected = new Set(), currentRule = null;
+const W=620,H=560,PADX=34,PADY=26;
+
+function request(command, params={}) {
+  return new Promise((resolve,reject)=>{
+    if(!backend){reject(new Error("Qt bridge unavailable"));return}
+    const id=Math.random().toString(36).slice(2);
+    const handler=(identity,text)=>{
+      if(identity!==id)return;
+      backend.reply.disconnect(handler);
+      const response=JSON.parse(text);
+      response.ok?resolve(response.data):reject(new Error(response.error));
+    };
+    backend.reply.connect(handler);
+    backend.request(id,command,JSON.stringify(params));
+  });
+}
+
+function sx(x,min,max){return PADX+(x-min)/(Math.max(1,max-min))*(W-PADX-10)}
+function sy(y,min,max){return PADY+(y-min)/(Math.max(1,max-min))*(H-PADY-30)}
+
+async function loadPatterns(){
+  try{
+    const index=await request("index");
+    if(!index||!index.images.length)return;
+    const image=await request("image",{id:index.images[0].id});
+    patterns=image.patterns.filter(p=>!p.edge_cut);
+    render();
+  }catch(error){$("status").textContent=error.message}
+}
+
+function pending(){
+  if(!scope&&scope!=="all")return [];
+  const minX=Math.min(...patterns.map(p=>p.layout_x).filter(v=>v!==null));
+  const maxX=Math.max(...patterns.map(p=>p.layout_x).filter(v=>v!==null));
+  const minY=Math.min(...patterns.map(p=>p.layout_y).filter(v=>v!==null));
+  const maxY=Math.max(...patterns.map(p=>p.layout_y).filter(v=>v!==null));
+  const base=scope==="all"?patterns:patterns.filter(p=>{
+    if(p.layout_x===null||p.layout_y===null)return false;
+    const x=sx(p.layout_x,minX,maxX),y=sy(p.layout_y,minY,maxY);
+    return x>=scope.x0&&x<=scope.x1&&y>=scope.y0&&y<=scope.y1;
+  });
+  const by={};
+  base.forEach(p=>{const v=split==="x"?p.layout_x:split==="y"?p.layout_y:p.raw&&p.raw.SizeX?p.raw.SizeX:p.raw&&p.raw.Area;p.raw;if(v!==null&&v!==undefined)(by[v]??=new Set()).add(p.ordinal)});
+  const prefix=$("prefix").value||"C",start=+$("start").value||1;
+  return Object.keys(by).map(Number).sort((a,b)=>a-b).map((v,i)=>({name:split==="size"?prefix+v:prefix+(start+i),keys:by[v],value:v}));
+}
+
+function setRule(){
+  const groups=[];
+  if(mode==="split"){
+    pending().forEach(g=>{
+      if(split==="x")groups.push({name:g.name,select:[{x:[g.value]}]});
+      else if(split==="y")groups.push({name:g.name,select:[{y:[g.value]}]});
+      else groups.push({name:g.name,select:[{points:[...g.keys].map(ordinal=>{
+        const p=patterns.find(q=>q.ordinal===ordinal);
+        return p?[p.layout_x,p.layout_y]:null;
+      }).filter(v=>v)}]});
+    });
+  }else{
+    if(selected.size)groups.push({name:$("groupName").value||"G1",select:[{points:[...selected].map(ordinal=>{
+      const p=patterns.find(q=>q.ordinal===ordinal);return [p.layout_x,p.layout_y]
+    })}]});
+  }
+  const rule={format:"basic-viewer-grouping",version:2,name:"BasicViewer grouping",coords:{x:{source:"layout",tolerance_nm:30},y:{source:"ordinal",origin:"top",tolerance_px:5}},groups:{}};
+  groups.forEach(g=>{rule.groups[g.name]={select:g.select}});
+  currentRule=rule;$("ruleJson").value=JSON.stringify(rule,null,2);
+  return rule;
+}
+
+function render(){
+  const svg=$("canvas");svg.innerHTML="";
+  if(!patterns.length)return;
+  const xs=patterns.map(p=>p.layout_x).filter(v=>v!==null),ys=patterns.map(p=>p.layout_y).filter(v=>v!==null);
+  const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+  patterns.forEach(p=>{
+    if(p.layout_x===null||p.layout_y===null)return;
+    const c=document.createElementNS(NS,"circle");
+    c.setAttribute("cx",sx(p.layout_x,minX,maxX));c.setAttribute("cy",sy(p.layout_y,minY,maxY));c.setAttribute("r","3.8");
+    c.setAttribute("fill",selected.has(p.ordinal)?"#2563eb":"#64748b");c.setAttribute("stroke",p.partial?"#b45309":"none");c.dataset.ordinal=p.ordinal;svg.appendChild(c);
+  });
+  const groups=pending();
+  $("preview").innerHTML=groups.length?groups.map(g=>`<span class="chip">${g.name} (${g.keys.size})</span>`).join(""):"<span style='font-size:11px;color:#888'>—</span>";
+  $("splitPanel").classList.toggle("on",mode==="split");$("manualPanel").classList.toggle("on",mode==="manual");$("splitTab").classList.toggle("on",mode==="split");$("manualTab").classList.toggle("on",mode==="manual");
+  document.querySelectorAll("[data-split]").forEach(b=>b.classList.toggle("on",b.dataset.split===split));
+  document.querySelectorAll("[data-tool]").forEach(b=>b.classList.toggle("on",b.dataset.tool===tool));
+  const ready=mode==="split"?pending().length>0:selected.size>0;$("apply").disabled=!ready;$("apply").textContent=ready?"Apply":"Apply";
+  setRule();
+}
+
+$("openRule").onclick=()=>backend&&backend.openGroupingRule();
+$("saveRule").onclick=()=>backend&&backend.saveGroupingRule($("ruleJson").value||"{}", "basic-viewer.grouping.json");
+$("splitTab").onclick=()=>{mode="split";render()};
+$("manualTab").onclick=()=>{mode="manual";render()};
+$("drawRegion").onclick=()=>{scope=null;render()};
+$("wholeRegion").onclick=()=>{scope="all";render()};
+document.querySelectorAll("[data-split]").forEach(b=>b.onclick=()=>{split=b.dataset.split;$("prefix").value={x:"C",y:"R",size:"S"}[split];render()});
+document.querySelectorAll("[data-tool]").forEach(b=>b.onclick=()=>{tool=b.dataset.tool;render()});
+$("cancel").onclick=()=>{selected=new Set();scope=null;render()};
+$("apply").onclick=async()=>{
+  const rule=setRule();
+  try{
+    await request("apply_rule",{rule});
+    $("status").textContent="Grouping rule applied to Viewer";
+  }catch(error){$("status").textContent=error.message}
+};
+
+let drag=null;
+$("canvas").onmousedown=e=>{
+  const r=$("canvas").getBoundingClientRect(),x=(e.clientX-r.left)*620/r.width,y=(e.clientY-r.top)*560/r.height;
+  if(mode==="manual"&&tool==="click"){
+    const xs=patterns.map(p=>p.layout_x).filter(v=>v!==null),ys=patterns.map(p=>p.layout_y).filter(v=>v!==null);
+    const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+    const p=patterns.find(q=>Math.hypot(sx(q.layout_x,minX,maxX)-x,sy(q.layout_y,minY,maxY)-y)<12);
+    if(p){selected.has(p.ordinal)?selected.delete(p.ordinal):selected.add(p.ordinal);render()}
+  }else if(mode==="split")drag={x0:x,y0:y,x1:x,y1:y};
+};
+$("canvas").onmousemove=e=>{if(!drag)return;const r=$("canvas").getBoundingClientRect();drag.x1=(e.clientX-r.left)*620/r.width;drag.y1=(e.clientY-r.top)*560/r.height};
+window.onmouseup=()=>{if(!drag)return;scope={x0:Math.min(drag.x0,drag.x1),x1:Math.max(drag.x0,drag.x1),y0:Math.min(drag.y0,drag.y1),y1:Math.max(drag.y0,drag.y1)};drag=null;render()};
+
+if(typeof qt!=="undefined"){
+  new QWebChannel(qt.webChannelTransport,channel=>{
+    backend=channel.objects.backend;
+    backend.ruleTextReady.connect(text=>{
+      try{
+        const rule=JSON.parse(text);
+        currentRule=rule;$("ruleJson").value=JSON.stringify(rule,null,2);
+        $("status").textContent="Grouping rule opened";
+      }catch(error){$("status").textContent=error.message}
+    });
+    loadPatterns();
+  });
+}
+</script>
+</body>
+</html>

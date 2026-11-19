@@ -1,197 +1,77 @@
 <!doctype html>
 <html lang="en">
+<head>
 <meta charset="utf-8">
-<title>Comparison Viewer</title>
+<title>BasicViewer</title>
 <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
 <header>
-<strong>Comparison Viewer</strong>
-<div id="datasets">
-<div class="datasetSlot base"><span class="slotRole">Base</span><span id="baseName" class="slotName">(not loaded)</span><button id="openBase">Open Base...</button></div>
-<div class="datasetSlot comparison"><span class="slotRole">Comp</span><span id="comparisonName" class="slotName">(not loaded)</span><button id="openComparison" title="Open a Comp dataset to compare with Base">Open Comp...</button><button id="closeComparison" class="slotClose" title="Close Comp and continue with Base only" aria-label="Close Comp dataset" hidden>×</button></div>
-</div>
-<span class="spacer"></span>
-<div id="exportMenu" class="menu">
-<button id="exportButton" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
-<div id="exportItems" role="menu" hidden>
-<button id="exportStats" role="menuitem">Center offset statistics (CSV)</button>
-<button id="exportOffsetPid" role="menuitem">Center offset statistics by PID (CSV)</button>
-<button id="exportPpeStats" role="menuitem">PPE statistics by PID (CSV)</button>
-<button id="exportPpeValues" role="menuitem">PPE values per pattern (CSV)</button>
-<button id="rawCsv" role="menuitem">Raw measurement data (CSV)</button>
-</div>
-</div>
-<span id="testWarning" role="status" hidden></span>
+  <strong>BasicViewer</strong>
+  <div id="datasets">
+    <div class="datasetSlot"><span class="slotRole">Dataset</span><span id="datasetName" class="slotName">(not loaded)</span></div>
+  </div>
+  <button id="openDataset">Open SQLite...</button>
+  <span class="spacer"></span>
+  <button id="editGroups" disabled>Edit Groups</button>
+  <button id="applyGroupRule" disabled>Apply grouping rule...</button>
+  <button id="exportButton">Export</button>
 </header>
-<div id="startup" class="hint" hidden>Open a Base SQLite file created by comparison_viewer_data_builder. Base alone can be analysed; open Comp as well to compare the two datasets. Original files are read-only; images are loaded only when selected.</div>
+<div id="metricStrip" hidden>
+  <strong>Metric</strong>
+  <select id="metricSelect" aria-label="Metric"></select>
+  <span id="metricHint">Changes update the Image, Wafer/Chip maps and group statistics immediately</span>
+</div>
+<div id="startup" class="hint">Open a BasicViewer SQLite file. Edit Groups and Apply grouping rule are available after dataset loading.</div>
 <main>
-<aside id="rail">
-<section id="scopePane">
-<div class="panelHeading"><h2>Selection</h2><span id="applyStatus" role="status">Initializing...</span><span class="info" tabindex="0" title="Conditions apply to BOTH datasets. Edit them, then Apply selection to recalculate statistics and maps. Undo restores the previous conditions.">i</span></div>
-<div class="controls">
-<label>Image type <select id="ms"><option value="">All</option></select></label>
-<label id="pnoControl" hidden>PNo <select id="pno"></select></label>
-</div>
-<div id="conditions">
-<span class="pill"><span id="chipsText">Chips: All</span><button id="clearChips" title="Clear chip selection" aria-label="Clear chip selection">×</button></span>
-<span class="pill"><span id="areaText">Area: All</span><button id="clearChipRect" title="Clear chip-area rectangle" aria-label="Clear chip-area rectangle">×</button></span>
-<span class="pill"><span id="roiText">ROI: All</span><button id="clearRoi" title="Clear image ROI" aria-label="Clear image ROI">×</button></span>
-</div>
-<div class="controls"><button id="undo">Undo</button><button id="clearAll" title="Clear chips, chip area and image ROI">Reset selection</button><button id="update">Apply selection</button></div>
-</section>
-<section id="waferPane" class="mapPane">
-<div class="panelHeading"><button class="collapse" aria-expanded="true" aria-label="Collapse wafer map">▾</button><h2 id="waferTitle">Wafer map</h2><span class="mapPending" hidden title="Selection changed but not applied. The map shows the last applied values; Apply selection to update.">Not applied</span>
-<div class="segmented" role="group" aria-label="Map dataset">Show <button data-map-role="base" aria-pressed="true">Base</button><button data-map-role="comparison" aria-pressed="false">Comp</button></div>
-<span class="info" tabindex="0" title="Click: select chip / Ctrl+click: multi-select.&#10;Blue cells: measured / Hatch: unmeasured.&#10;Arrow: median Offset X/Y / Color: median |Offset|.&#10;Applied chip medians; yellow outline: pending selection.&#10;Show Base | Comp switches both maps.">i</span></div>
-<div class="mapBody"><canvas id="wafer"></canvas><div id="mapScale" class="colorBar"></div></div>
-</section>
-<section id="chipPane" class="mapPane">
-<div class="panelHeading"><button class="collapse" aria-expanded="true" aria-label="Collapse chip map">▾</button><h2 id="chipTitle">Chip map</h2><span class="mapPending" hidden title="Selection changed but not applied. The map shows the last applied values; Apply selection to update.">Not applied</span>
-<select id="focusChip" aria-label="Focus chip" title="Focus chip (view only)"></select>
-<div class="segmented" role="group" aria-label="Map dataset">Show <button data-map-role="base" aria-pressed="true">Base</button><button data-map-role="comparison" aria-pressed="false">Comp</button></div>
-<button id="fitChip" title="Reset chip-map pan. Selection and analysis results are unchanged." aria-label="Fit chip map view">Fit</button>
-<span class="info" tabindex="0" title="Click: inspect / Drag: pan / Ctrl+drag: select chip area.&#10;XREL / YREL. Y+ is up; negative Offset Y points down.&#10;Focus chip is view-only. Area filter applies to all analysis chips.&#10;Same-position images of different image types can overlap.">i</span></div>
-<div class="mapBody"><canvas id="chip"></canvas><div id="chipScale" class="colorBar"></div></div>
-</section>
-</aside>
-<div id="center">
-<div id="upperRow">
-<section id="imagesPane">
-<div class="panelHeading"><button class="collapse" aria-expanded="true" aria-label="Collapse image list">◂</button><h2>Image list</h2><span id="imageCount"></span><span class="info" tabindex="0" title="Base images for the pending selection. With Comp loaded, only Base images with a same-chip Comp image are listed. Browsing an image does not change analysis filters.&#10;Search filters only this list; statistics are unchanged. A search matches the image name (partial), the chip (for example 8,7) or the Seq number.&#10;Up/Down (in the list or on the image): previous/next image.&#10;◂ collapses the list; the image can still be stepped with Up/Down.">i</span></div>
-<input id="imageSearch" type="search" placeholder="Search image name, chip (8,7) or Seq" aria-label="Search image list">
-<div class="listRow listHead"><span>Image name</span><span>Seq</span><span>Chip</span><span>Image type</span></div>
-<div id="images" class="vlist" tabindex="0" role="listbox" aria-label="Image list"><div class="vspace"></div></div>
-</section>
-<div id="listSplitter" role="separator" aria-orientation="vertical" aria-label="Resize image list" tabindex="0" title="Drag to resize. Double-click to reset."></div>
-<section id="detailPane">
-<div class="panelHeading"><h2>Image</h2><div id="imageName"></div><div id="imageBackground"></div>
-<button id="contourViewButton" aria-pressed="false">Show contours</button>
-<button id="fit" title="Fit the source image. ROI and analysis results are unchanged." aria-label="Fit source image">Fit</button>
-<button id="expand" title="Open the image in a separate, larger window that follows this window">Expand</button>
-<span class="info" tabindex="0" title="Drag: pan / Ctrl+drag: shared ROI / Wheel: zoom.&#10;ROI applies to both datasets' source pixels.&#10;Red: Base / Blue: Comparison / Green: Design. Contour/Design: 2.5 screen px.">i</span></div>
-<div id="imageWorkspace">
-<div id="sourceView">
-<div id="layers">
-<label class="chip" title="Source image"><input type="checkbox" data-layer="image" checked><span>Image</span></label>
-<label class="chip design" title="Design"><input type="checkbox" data-layer="design" checked><span>Design</span></label>
-<label class="chip" title="PID labels"><input type="checkbox" id="pidLabels" checked><span>PID</span></label>
-<span class="chipGroup"><button class="chipLabel" data-overlay-group="contour" aria-pressed="true" title="Toggle all available contour overlays">Contour</button><label class="chip base" title="Base contour"><input type="checkbox" data-layer="base" aria-label="Base contour" checked><span>Base</span></label><label class="chip comparison" title="Comparison contour"><input type="checkbox" data-layer="comparison" aria-label="Comparison contour" checked><span>Comp</span></label></span>
-<span class="chipGroup"><button class="chipLabel" data-overlay-group="vectors" aria-pressed="true" title="Toggle all available vector overlays">Vectors</button><label class="chip base" title="Base vectors"><input type="checkbox" data-vector="base" aria-label="Base vectors" checked><span>Base</span></label><label class="chip comparison" title="Comparison vectors"><input type="checkbox" data-vector="comparison" aria-label="Comparison vectors" checked><span>Comp</span></label></span>
-<label class="scale">Vector scale <input id="multiplier" type="number" value="10" min="0" max="100" step="0.5">x</label>
-<label class="chip" title="Filled Base minus Comp (inward) and Comp minus Base (outward), aligned exactly as Image"><input id="areaDifference" type="checkbox"><span>Area difference</span></label>
-</div>
-<div id="areaLegend" class="hint" hidden><span class="inward">Inward: Base \ Comp</span> / <span class="outward">Outward: Comp \ Base</span>. Image-level PID alignment; original contours unchanged.</div>
-<div id="areaStatus" class="hint" role="status" hidden></div>
-<button id="areaRetry" hidden>Retry area difference</button>
-<div id="imageStage">
-<canvas id="image" tabindex="0" aria-label="Source image. Ctrl+click: select PID. Ctrl+drag: ROI. Up/Down: previous/next image"></canvas>
-</div>
-<div id="imageStatus" role="status"></div>
-</div>
-<div id="contourSplitter" role="separator" aria-orientation="vertical" aria-label="Resize source image and contour" tabindex="0" title="Drag to resize. Double-click to reset." hidden></div>
-<div id="contourPane" hidden>
-<div class="panelHeading"><h2>Contour overlay</h2><span class="spacer"></span>
-<button id="contourFit" title="Reset contour pan and zoom">Fit</button>
-<div class="segmented" role="group" aria-label="Contour zoom">
-<button id="contourZoomOut" title="Zoom out">−</button><button id="contourZoomIn" title="Zoom in">+</button>
-</div></div>
-<div id="contourControls" class="controls" hidden>
-<div id="contourMeasureControl" class="segmented contourMeasure" role="group" aria-label="Contour overlay measure">
-<button data-contour-measure="length" aria-pressed="true">Contour Density</button><button data-contour-measure="area" aria-pressed="false">Area Diff</button>
-</div>
-<span>Contours of</span><div class="segmented" role="group" aria-label="Contour overlay scope">
-<button data-contour-scope="image" aria-pressed="true">This image</button>
-<button data-contour-scope="pid" aria-pressed="false">Same PID across selection</button>
-<button data-contour-scope="selection" aria-pressed="false">All selected images</button>
-</div>
-<label id="contourPidControl" hidden>PID <select id="contourPid"></select></label>
-<div id="contourRoleControl" class="segmented" role="group" aria-label="Visible PID contours" hidden>
-<button data-contour-role="base" aria-pressed="false">Base</button>
-<button data-contour-role="comparison" aria-pressed="false">Comparison</button>
-<button data-contour-role="both" aria-pressed="true">Both</button>
-</div>
-<label id="contourTargetControl">Patterns <select id="contourTarget">
-<option value="roi">ROI / all patterns</option><option value="pids">Clicked PIDs</option>
-</select></label>
-<button id="contourClearPids" hidden>Clear PIDs</button>
-<div id="areaChannels" class="segmented" role="group" aria-label="Area difference channels" hidden>
-<button data-area-channel="inward" aria-pressed="false">Inward</button><button data-area-channel="outward" aria-pressed="false">Outward</button><button data-area-channel="both" aria-pressed="true">Both</button>
-</div>
-<span id="contourDisplayLabel" hidden>Display</span>
-<div id="contourDisplay" class="segmented" role="group" aria-label="Contour density display" hidden>
-<button data-contour-display="focus" aria-pressed="true">Focus</button>
-<button data-contour-display="compare" aria-pressed="false">Base vs Comparison</button>
-</div>
-<div id="contourFocus" class="segmented" role="group" aria-label="Focused dataset" hidden>
-<button data-contour-focus="base" aria-pressed="true">Base</button>
-<button data-contour-focus="comparison" aria-pressed="false">Comparison</button>
-</div>
-<div id="contourReferenceControls" class="referenceControls" hidden>
-<label><input id="contourSem" type="checkbox">SEM</label>
-<label><input id="contourDesign" type="checkbox">Design</label>
-<label>SEM opacity <input id="contourSemOpacity" type="range" min="0" max="100" value="35" aria-label="SEM opacity"></label>
-</div>
-<span id="contourSelection" class="hint"></span>
-<span id="contourHint" class="hint">Source: Ctrl+click PID / Ctrl+drag ROI. Contour: wheel to zoom / drag to pan.</span>
-</div>
-<div id="contourOverlay" hidden aria-busy="false">
-<canvas id="contourCanvas" tabindex="0" aria-label="Contour overlay. Wheel: zoom. Drag: pan."></canvas>
-<div id="contourMessage" role="status" hidden><span id="contourMessageText"></span><button id="contourRetry" hidden>Retry</button></div>
-</div>
-<div id="contourStatus" role="status" hidden></div>
-</div>
-</div>
-</section>
-</div>
-<div id="splitter" role="separator" aria-orientation="horizontal" aria-label="Resize image and statistics" tabindex="0" title="Drag to resize. Double-click to reset."></div>
-<div id="lower">
-<div id="lowerTabs"><div role="tablist"><button data-lower="stats" aria-pressed="true">Center offset (Center − Layout)</button><button data-lower="ppe" aria-pressed="false">PPE (Base − Comparison)</button></div>
-<span class="spacer"></span>
-<button id="statsMin" aria-pressed="false" title="Minimize the statistics panel" aria-label="Minimize statistics panel">▁</button><button id="statsMax" aria-pressed="false" title="Maximize the statistics panel" aria-label="Maximize statistics panel">▢</button></div>
-<div id="lowerBody">
-<section id="statsPane" data-lower-pane="stats">
-<div class="panelHeading"><h2 id="statsTitle">Applied statistics / BOTH</h2>
-<div id="statsView" class="segmented" role="group" aria-label="Statistics grouping"><button data-stats-view="summary" aria-pressed="true">Summary</button><button data-stats-view="pid" aria-pressed="false">By PID</button></div>
-<span id="statsStatus">Not calculated</span></div>
-<div id="snapshot" class="hint"></div>
-<div id="offsetPidScroll" class="scroll grow" hidden><table id="offsetPidTable"><thead><tr><th>Dataset</th><th>PID</th><th>N</th><th>Excluded</th><th>Mean X</th><th>SD X</th><th>Mean Y</th><th>SD Y</th><th>Mean |Offset|</th><th>SD |Offset|</th></tr></thead><tbody></tbody></table></div>
-<div id="statsScroll" class="scroll grow"><table id="stats"><thead><tr><th>Dataset</th><th>Metric</th><th>Valid N</th><th>Missing</th><th>Excluded</th><th>Mean</th><th>Median</th><th>SD</th><th>Min</th><th>Max</th></tr></thead><tbody></tbody></table></div>
-<div id="statNote" class="hint"></div>
-</section>
-<section id="graphPane" data-lower-pane="stats">
-<div class="panelHeading"><h2 id="graphTitle">Applied distribution / BOTH</h2></div>
-<div class="controls"><div id="graphTabs"><button data-graph="hist" aria-pressed="true">Histogram</button><button data-graph="box">Box plot</button><button data-graph="scatter">Scatter</button></div>
-<label>Metric <select id="metric"><option value="dx">Offset X [nm]</option><option value="dy">Offset Y [nm]</option><option value="magnitude">|Offset| [nm]</option></select></label></div>
-<canvas id="graph"></canvas>
-<div id="graphInfo" class="hint"></div>
-</section>
-<section id="ppeStatsPane" data-lower-pane="ppe" hidden>
-<div class="panelHeading"><h2>PPE by PID (Base − Comparison) [nm]</h2><span id="ppeStatus"></span></div>
-<div class="scroll grow"><table id="ppeTable"><thead><tr><th></th><th>PID</th><th>N</th><th>Mean X</th><th>SD X</th><th>Mean Y</th><th>SD Y</th><th>Mean |PPE|</th><th>SD |PPE|</th></tr></thead><tbody></tbody></table></div>
-<div id="ppeNote" class="hint"></div>
-</section>
-<section id="ppeGraphPane" data-lower-pane="ppe" hidden>
-<div class="panelHeading"><h2>PPE distribution by PID</h2></div>
-<div class="controls"><div id="ppeGraphTabs"><button data-ppe-graph="hist" aria-pressed="true">Histogram</button><button data-ppe-graph="box" aria-pressed="false">Box plot</button><button data-ppe-graph="scatter" aria-pressed="false">Scatter</button></div>
-<label id="ppeStatControl" hidden>Statistic <select id="ppeStat"><option value="mean">Mean</option><option value="sd">SD</option></select></label>
-<label id="ppeComponentControl">Component <select id="ppeComponent"><option value="x">PPE X [nm]</option><option value="y">PPE Y [nm]</option><option value="magnitude">|PPE| [nm]</option></select></label>
-<label id="ppeBinControl">Bin width <input id="ppeBin" type="number" min="0.001" step="any">nm</label><button id="ppeBinAuto">Auto</button></div>
-<canvas id="ppeGraph"></canvas>
-<div id="ppeGraphInfo" class="hint"></div>
-</section>
-</div>
-</div>
-</div>
-<button id="rawToggle" aria-expanded="false" aria-controls="rawPane" title="Show or hide the raw measurement data (source rows) of the selected image"><span class="arrow">◂</span> Raw measurement data</button>
-<aside id="rawPane" hidden>
-<div class="panelHeading"><h2 id="rawTitle">Raw measurement data</h2><button id="rawClose" aria-label="Close raw measurement data" title="Close">×</button></div>
-<div class="segmented" role="group" aria-label="Raw measurement data dataset"><button data-raw-role="base" aria-pressed="true">Base</button><button data-raw-role="comparison" aria-pressed="false">Comp</button></div>
-<div class="hint">Source rows of the selected image, not the applied analysis snapshot.</div>
-<details><summary>Choose columns</summary><div id="columns"></div></details>
-<div id="rawStatus" class="hint"></div>
-<div class="scroll grow"><table id="raw"><thead></thead><tbody></tbody></table></div>
-</aside>
+  <aside id="rail">
+    <section id="selection">
+      <div class="panelHeading"><h2>Selection</h2><span id="selectionStatus">No selection</span></div>
+      <div class="controls"><label>PNo <select id="pno"><option value="">All</option></select></label></div>
+      <div class="pills"><span class="pill">Chips: All</span><span class="pill">Area: All</span><span class="pill">Edge-cut: excluded</span></div>
+      <div class="controls"><button id="undoSelection" disabled>Undo</button><button id="resetSelection">Reset selection</button></div>
+    </section>
+    <section class="mapPane">
+      <div class="panelHeading"><h2>Wafer map</h2><span id="waferMetric" class="metricBadge"></span></div>
+      <div class="mapBody"><canvas id="wafer"></canvas><div class="colorBar"><b>High</b><span class="ramp"></span><b>Low</b></div></div>
+    </section>
+    <section class="mapPane">
+      <div class="panelHeading"><h2>Chip map</h2><span class="spacer"></span><button id="fitChip">Fit</button></div>
+      <div class="mapBody"><canvas id="chip"></canvas><div class="colorBar"><b>High</b><span class="ramp"></span><b>Low</b></div></div>
+    </section>
+  </aside>
+
+  <div id="center">
+    <div id="upperRow">
+      <section id="imageList">
+        <div class="panelHeading"><h2>Image list</h2><span id="imageCount"></span></div>
+        <input id="imageSearch" type="search" placeholder="Search image name or chip">
+        <div class="listHead"><span>Image name</span><span>Seq</span><span>Chip</span><span>Type</span></div>
+        <div id="images" class="vlist"></div>
+      </section>
+      <div id="listSplitter"></div>
+      <section id="detail">
+        <div class="panelHeading"><h2>Image</h2><span id="imageName"></span><span class="spacer"></span><button id="fit">Fit</button></div>
+        <div id="layers"><span class="chip on">Image</span><span class="chip on">Design</span><span class="chip on">Groups</span><span class="chip">PID</span></div>
+        <div id="imageStage"><canvas id="sourceImage"></canvas></div>
+        <div id="imageStatus" role="status"></div>
+      </section>
+    </div>
+    <div id="splitter"></div>
+    <div id="lower">
+      <section id="statsPane">
+        <div class="panelHeading"><h2 id="statsTitle">Group statistics</h2><span id="statsStatus"></span></div>
+        <div id="boxPlot" class="boxPlot"></div>
+      </section>
+      <section id="histPane">
+        <div class="panelHeading"><h2 id="histTitle">Selected group histogram</h2></div>
+        <div id="histogram" class="histogram"></div>
+      </section>
+    </div>
+  </div>
 </main>
 <div id="error" role="alert"></div>
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 <script src="viewer.js"></script>
+</body>
 </html>
