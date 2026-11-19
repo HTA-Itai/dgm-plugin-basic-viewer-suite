@@ -185,7 +185,7 @@ class Store:
     def statistics(self, metric):
         with self._connect() as db:
             rows = db.execute(
-                "SELECT p.image_id,p.ordinal,p.layout_x,p.layout_y,p.raw,p.edge_cut "
+                "SELECT p.image_id,p.ordinal,p.layout_x,p.layout_y,p.dx,p.dy,p.magnitude,p.raw,p.edge_cut "
                 "FROM patterns p"
             ).fetchall()
         assignment = self.group_assignment()
@@ -202,12 +202,7 @@ class Store:
             raw = json.loads(row["raw"])
             value = raw.get(metric)
             if value is None and metric in {"dx", "dy", "magnitude"}:
-                with self._connect() as db:
-                    extra = db.execute(
-                        "SELECT dx,dy,magnitude FROM patterns WHERE image_id=? AND ordinal=?",
-                        (row["image_id"], row["ordinal"]),
-                    ).fetchone()
-                value = dict(dx=extra["dx"], dy=extra["dy"], magnitude=extra["magnitude"]).get(metric)
+                value = dict(dx=row["dx"], dy=row["dy"], magnitude=row["magnitude"]).get(metric)
             try:
                 value = float(value)
             except (TypeError, ValueError):
