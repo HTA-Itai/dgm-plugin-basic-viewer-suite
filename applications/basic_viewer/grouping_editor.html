@@ -50,7 +50,7 @@ details{margin-top:6px}textarea{width:100%;height:180px;font:11px monospace;resi
 const $ = id => document.getElementById(id);
 const NS = "http://www.w3.org/2000/svg";
 let backend = null, bridgeReady = false, patterns = [], mode = "split", split = "x", tool = "click";
-let scope = null, selected = new Set(), currentRule = null;
+let scope = null, selected = new Set(), currentRule = null, pendingOpenedRule = null;
 const W=620,H=560,PADX=34,PADY=26;
 
 function request(command, params={}) {
@@ -150,6 +150,14 @@ document.querySelectorAll("[data-split]").forEach(b=>b.onclick=()=>{split=b.data
 document.querySelectorAll("[data-tool]").forEach(b=>b.onclick=()=>{tool=b.dataset.tool;render()});
 $("cancel").onclick=()=>{selected=new Set();scope=null;render()};
 $("apply").onclick=async()=>{
+  if(pendingOpenedRule){
+    try{
+      await request("apply_rule",{rule:pendingOpenedRule});
+      $("status").textContent="Opened grouping rule applied to Viewer";
+      pendingOpenedRule=null;
+    }catch(error){$("status").textContent=error.message}
+    return;
+  }
   const rule=setRule();
   try{
     await request("apply_rule",{rule});
@@ -176,7 +184,7 @@ if(typeof qt!=="undefined"){
     backend.ruleTextReady.connect(text=>{
       try{
         const rule=JSON.parse(text);
-        currentRule=rule;$("ruleJson").value=JSON.stringify(rule,null,2);
+        currentRule=rule;pendingOpenedRule=rule;$("ruleJson").value=JSON.stringify(rule,null,2);
         $("status").textContent="Grouping rule opened";
       }catch(error){$("status").textContent=error.message}
     });
